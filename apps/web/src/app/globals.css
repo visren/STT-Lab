@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #071512;
+  --ink-2: #0e2420;
+  --panel: rgba(14, 36, 32, 0.72);
+  --line: rgba(200, 245, 96, 0.18);
+  --text: #e8f2ea;
+  --muted: #8aa396;
+  --accent: #c8f560;
+  --accent-2: #3ecfba;
+  --danger: #ff6b5a;
+  --ok: #6dffb0;
+  --warn: #ffd166;
+  --glow: rgba(62, 207, 186, 0.22);
+  --font-display: var(--font-display), "Bricolage Grotesque", sans-serif;
+  --font-body: var(--font-body), "Figtree", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  color: var(--text);
+  background: var(--ink);
+  font-family: var(--font-body);
+  margin: 0;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(1200px 700px at 12% -10%, rgba(62, 207, 186, 0.22), transparent 55%),
+    radial-gradient(900px 600px at 90% 10%, rgba(200, 245, 96, 0.12), transparent 50%),
+    radial-gradient(800px 500px at 50% 100%, rgba(14, 80, 70, 0.45), transparent 60%),
+    linear-gradient(165deg, #05110f 0%, #0b1f1c 45%, #102a25 100%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.35;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(232, 242, 234, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 242, 234, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(200, 245, 96, 0.35);
+  color: #04110e;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-bar {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes spin-soft {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-rise {
+  animation: rise-in 0.55s ease both;
+}
+
+.animate-rise-delay-1 {
+  animation: rise-in 0.55s ease 0.08s both;
+}
+
+.animate-rise-delay-2 {
+  animation: rise-in 0.55s ease 0.16s both;
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  animation: pulse-bar 1.1s ease-in-out infinite;
+}
+
+.spinner {
+  animation: spin-soft 0.9s linear infinite;
+}
+
+.diff-equal {
+  color: var(--text);
+}
+
+.diff-insert {
+  color: var(--ok);
+  background: rgba(109, 255, 176, 0.12);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+.diff-delete {
+  color: var(--danger);
+  background: rgba(255, 107, 90, 0.12);
+  text-decoration: line-through;
+}

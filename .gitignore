@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/web/.env.local
+
+# Runtime data
+data/audio/*
+data/datasets/*
+data/adapters/*
+data/runs/*
+data/*.db
+!data/.gitkeep
+!data/audio/.gitkeep
+!data/datasets/.gitkeep
+!data/adapters/.gitkeep
+!data/runs/.gitkeep
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+
+# IDE / OS / test
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.cursor/
+.pytest_cache/
+apps/api/.pytest_cache/
+
+# Model caches (local)
+.cache/
+*.pt
+*.bin
+huggingface/
