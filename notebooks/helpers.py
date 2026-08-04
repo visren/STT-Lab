@@ -1,11 +1,12 @@
-"""Helpers for the STT Lab Jupyter notebook.
+"""Notebook helpers for STT Lab research workflow.
 
-Uses the FastAPI app modules directly (no HTTP server required).
+Workflow: catalog → compare → pick model → dataset → finetune (local|cloud) → evaluate
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import sys
 import uuid
@@ -14,18 +15,29 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-API_DIR = ROOT / "apps" / "api"
-if str(API_DIR) not in sys.path:
-    sys.path.insert(0, str(API_DIR))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from app.config import DATASETS_DIR, ensure_dirs  # noqa: E402
-from app.db import Dataset, FinetuneJob, Sample, SessionLocal, init_db, utcnow  # noqa: E402
-from app.providers.registry import list_models  # noqa: E402
-from app.services.audio import probe_duration  # noqa: E402
-from app.services.evaluate import run_evaluation  # noqa: E402
-from app.services.finetune import start_finetune_job  # noqa: E402
-from app.services.metrics import word_diff  # noqa: E402
-from app.services.transcribe import run_transcription  # noqa: E402
+from stt_lab.config import DATASETS_DIR, ensure_dirs  # noqa: E402
+from stt_lab.db import Dataset, FinetuneJob, Sample, SessionLocal, init_db, utcnow  # noqa: E402
+from stt_lab.finetune_backends import BackendName, get_backend  # noqa: E402
+from stt_lab.pipeline import run_dictate  # noqa: E402
+from stt_lab.policy import DataPolicy  # noqa: E402
+from stt_lab.profiles import (  # noqa: E402
+    CleanupConfig,
+    CloudConfig,
+    PolishConfig,
+    RunnableProfile,
+    STTConfig,
+    list_profiles,
+    load_profile,
+    save_profile,
+)
+from stt_lab.providers.registry import list_models  # noqa: E402
+from stt_lab.services.audio import probe_duration  # noqa: E402
+from stt_lab.services.evaluate import run_evaluation  # noqa: E402
+from stt_lab.services.metrics import word_diff  # noqa: E402
+from stt_lab.services.transcribe import run_transcription  # noqa: E402
 
 ensure_dirs()
 init_db()
@@ -188,9 +200,8 @@ def start_finetune(
     learning_rate: float = 1e-4,
     batch_size: int = 1,
     language: str = "en",
+    backend: BackendName = "local",
 ) -> str:
-    import json
-
     db = SessionLocal()
     try:
         train_count = (
@@ -218,6 +229,7 @@ def start_finetune(
             "train_count": train_count,
             "val_count": val_count,
             "warn_low_samples": train_count < 30,
+            "backend": backend,
         }
         job = FinetuneJob(
             id=uuid.uuid4().hex,
@@ -231,7 +243,7 @@ def start_finetune(
         db.add(job)
         db.commit()
         db.refresh(job)
-        start_finetune_job(db, job)
+        get_backend(backend).start(db, job)
         return job.id
     finally:
         db.close()
@@ -249,6 +261,7 @@ def job_status(job_id: str) -> dict:
             "progress": job.progress,
             "error": job.error,
             "adapter_path": job.adapter_path,
+            "backend": (job.get_config() or {}).get("backend", "local"),
             "logs_tail": "\n".join((job.logs or "").splitlines()[-20:]),
         }
     finally:
@@ -303,8 +316,6 @@ def eval_df(response) -> pd.DataFrame:
 
 
 def load_catalog() -> dict:
-    import json
-
     path = Path(__file__).resolve().parent / "models_catalog.json"
     return json.loads(path.read_text())
 
@@ -327,3 +338,130 @@ def catalog_df(
     if role:
         df = df[df["roles"].apply(lambda rs: role in (rs or []))]
     return df.reset_index(drop=True)
+
+
+def export_profile(
+    *,
+    profile_id: str,
+    name: str,
+    base_model: str,
+    adapter_id: str | None = None,
+    mode: str = "fully_local",
+    language: str = "en",
+    cloud_stt_base_url: str | None = None,
+    cloud_stt_api_key_env: str | None = None,
+    stt_provider: str | None = None,
+) -> str:
+    """Export a runnable profile for the dictation app."""
+    if mode == "fully_local":
+        policy = DataPolicy(
+            allow_cloud_audio=False,
+            allow_cloud_transcript=False,
+        )
+        location = "local"
+        provider = stt_provider or (
+            f"adapted-{adapter_id}" if adapter_id else f"whisper-{base_model}"
+        )
+    elif mode == "cloud_stt":
+        policy = DataPolicy(
+            allow_cloud_audio=True,
+            allow_cloud_transcript=True,
+        )
+        location = "cloud"
+        provider = stt_provider or "openai-whisper-1"
+    else:  # hybrid_local_stt
+        policy = DataPolicy(
+            allow_cloud_audio=False,
+            allow_cloud_transcript=True,
+        )
+        location = "local"
+        provider = stt_provider or (
+            f"adapted-{adapter_id}" if adapter_id else f"whisper-{base_model}"
+        )
+
+    profile = RunnableProfile(
+        id=profile_id,
+        name=name,
+        mode=mode,  # type: ignore[arg-type]
+        stt=STTConfig(
+            provider=provider,
+            base_model=base_model,
+            adapter_id=adapter_id,
+            language=language,
+            location=location,  # type: ignore[arg-type]
+        ),
+        polish=PolishConfig(provider="off"),
+        cleanup=CleanupConfig(filler_words=True),
+        policy=policy,
+        cloud=CloudConfig(
+            stt_base_url=cloud_stt_base_url,
+            stt_api_key_env=cloud_stt_api_key_env,
+        ),
+    )
+    path = save_profile(profile)
+    return str(path)
+
+
+def profiles_df() -> pd.DataFrame:
+    rows = []
+    for p in list_profiles():
+        rows.append(
+            {
+                "id": p.id,
+                "name": p.name,
+                "mode": p.mode,
+                "stt": p.stt.provider,
+                "location": p.stt.location,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def dictate(profile_id: str, audio_path: str | Path):
+    """Run the dictation pipeline for a saved profile (research/dev helper)."""
+    profile = load_profile(profile_id)
+    db = SessionLocal()
+    try:
+        return asyncio.run(run_dictate(db, profile, audio_path))
+    finally:
+        db.close()
+
+
+# --- dataset vault ---
+
+def vault_status() -> dict:
+    from stt_lab.vault import list_prefix, vault_configured
+    from stt_lab.config import settings
+
+    ok = vault_configured()
+    info = {
+        "configured": ok,
+        "endpoint": settings.vault_endpoint,
+        "bucket": settings.vault_bucket,
+        "secure": settings.vault_secure,
+    }
+    if ok:
+        try:
+            info["objects"] = len(list_prefix(""))
+        except Exception as exc:
+            info["error"] = str(exc)
+    return info
+
+
+def vault_push_dataset(dataset_id: str):
+    from stt_lab.vault import push_dataset
+
+    return push_dataset(dataset_id)
+
+
+def vault_pull_dataset(dataset_id: str):
+    from stt_lab.vault import pull_dataset
+
+    return pull_dataset(dataset_id)
+
+
+def vault_list(prefix: str = "datasets/"):
+    from stt_lab.vault import list_prefix
+
+    rows = [{"key": o.key, "size": o.size} for o in list_prefix(prefix)]
+    return pd.DataFrame(rows)

@@ -1,23 +1,21 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { Figtree, Fraunces } from "next/font/google";
 import { Nav } from "@/components/Nav";
 import "./globals.css";
 
-const display = Bricolage_Grotesque({
-  variable: "--font-display",
+const display = Fraunces({
   subsets: ["latin"],
-  weight: ["500", "700", "800"],
+  variable: "--font-display",
 });
 
-const body = Figtree({
-  variable: "--font-body",
+const sans = Figtree({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
   title: "STT Lab",
-  description: "Compare speech-to-text models and adapt Whisper to your voice.",
+  description: "Compare and adapt speech-to-text models on your own voice.",
 };
 
 export default function RootLayout({
@@ -27,9 +25,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${display.variable} ${body.variable} antialiased`}>
+      <body className={`${display.variable} ${sans.variable} antialiased`}>
         <Nav />
-        <main className="mx-auto w-full max-w-6xl px-6 pb-20 pt-6">{children}</main>
+        <main>{children}</main>
       </body>
     </html>
   );

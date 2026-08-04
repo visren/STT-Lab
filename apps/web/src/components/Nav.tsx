@@ -3,36 +3,34 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
+const LINKS = [
   { href: "/", label: "Compare" },
   { href: "/datasets", label: "Datasets" },
-  { href: "/adapt", label: "Adapt" },
+  { href: "/finetune", label: "Fine-tune" },
   { href: "/settings", label: "Settings" },
 ];
 
 export function Nav() {
   const pathname = usePathname();
-
   return (
     <header className="mx-auto flex w-full max-w-6xl items-end justify-between gap-6 px-6 pb-2 pt-8">
-      <Link href="/" className="group">
-        <div className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-[var(--accent)] transition-transform duration-300 group-hover:-translate-y-0.5 md:text-4xl">
+      <Link href="/" className="group block">
+        <p className="font-display text-4xl tracking-tight text-foam transition group-hover:text-white md:text-5xl">
           STT Lab
-        </div>
-        <p className="mt-1 text-sm text-[var(--muted)]">Compare models. Adapt to your voice.</p>
+        </p>
       </Link>
-      <nav className="flex flex-wrap items-center gap-1 text-sm">
-        {links.map((link) => {
+      <nav className="mb-1 flex flex-wrap items-center gap-1 font-sans text-sm">
+        {LINKS.map((link) => {
           const active =
             link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`rounded-md px-3 py-2 transition-colors ${
+              className={`rounded-md px-3 py-1.5 transition ${
                 active
-                  ? "bg-[var(--accent)] text-[var(--ink)]"
-                  : "text-[var(--muted)] hover:text-[var(--text)]"
+                  ? "bg-tide/20 text-foam"
+                  : "text-mist hover:bg-ink-800/50 hover:text-foam"
               }`}
             >
               {link.label}

@@ -1,134 +1,192 @@
 import type {
-  DatasetOut,
+  DatasetDetail,
+  DatasetSummary,
   EvaluateResponse,
-  FinetuneJobOut,
+  FinetuneJob,
   ModelInfo,
-  SettingsOut,
   TranscribeResponse,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...init?.headers,
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
-    } catch {
-      /* ignore */
-    }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+async function parseError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    if (typeof data?.detail === "string") return data.detail;
+    return JSON.stringify(data?.detail ?? data);
+  } catch {
+    return res.statusText || `HTTP ${res.status}`;
   }
-  return res.json() as Promise<T>;
 }
 
-export const api = {
-  health: () => request<{ ok: boolean }>("/api/health"),
-  models: () => request<ModelInfo[]>("/api/models"),
-  settings: () => request<SettingsOut>("/api/settings"),
-  updateSettings: (body: Record<string, string | null | undefined>) =>
-    request<SettingsOut>("/api/settings", {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
+export async function fetchModels(): Promise<ModelInfo[]> {
+  const res = await fetch("/api/models", { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
 
-  transcribe: async (opts: {
-    file: Blob;
-    filename: string;
-    modelIds: string[];
-    reference?: string;
-    language?: string;
-  }) => {
-    const fd = new FormData();
-    fd.append("audio", opts.file, opts.filename);
-    fd.append("model_ids", JSON.stringify(opts.modelIds));
-    if (opts.reference) fd.append("reference", opts.reference);
-    if (opts.language) fd.append("language", opts.language);
-    return request<TranscribeResponse>("/api/transcribe", { method: "POST", body: fd });
-  },
+export async function fetchSettings(): Promise<{
+  whisper_device: string;
+  keys: { openai: boolean; deepgram: boolean; assemblyai: boolean };
+  models: ModelInfo[];
+}> {
+  const res = await fetch("/api/settings", { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
 
-  listDatasets: () => request<DatasetOut[]>("/api/datasets"),
-  getDataset: (id: string) => request<DatasetOut>(`/api/datasets/${id}`),
-  createDataset: (name: string, description = "") =>
-    request<DatasetOut>("/api/datasets", {
-      method: "POST",
-      body: JSON.stringify({ name, description }),
-    }),
-  updateDataset: (id: string, body: { name?: string; description?: string }) =>
-    request<DatasetOut>(`/api/datasets/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
-  deleteDataset: (id: string) =>
-    request<{ ok: boolean }>(`/api/datasets/${id}`, { method: "DELETE" }),
+export async function updateSettings(body: {
+  openai_api_key?: string;
+  deepgram_api_key?: string;
+  assemblyai_api_key?: string;
+  whisper_device?: string;
+}): Promise<void> {
+  const res = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+}
 
-  addSample: async (
-    datasetId: string,
-    opts: {
-      file?: Blob;
-      filename?: string;
-      audioPath?: string;
-      transcript?: string;
-      split?: "train" | "val";
-    }
-  ) => {
-    const fd = new FormData();
-    if (opts.file) fd.append("audio", opts.file, opts.filename || "clip.wav");
-    if (opts.audioPath) fd.append("audio_path", opts.audioPath);
-    fd.append("transcript", opts.transcript || "");
-    fd.append("split", opts.split || "train");
-    return request(`/api/datasets/${datasetId}/samples`, { method: "POST", body: fd });
-  },
-  updateSample: (
-    datasetId: string,
-    sampleId: string,
-    body: { transcript?: string; split?: "train" | "val" }
-  ) =>
-    request(`/api/datasets/${datasetId}/samples/${sampleId}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
-  deleteSample: (datasetId: string, sampleId: string) =>
-    request<{ ok: boolean }>(`/api/datasets/${datasetId}/samples/${sampleId}`, {
-      method: "DELETE",
-    }),
+export async function transcribe(opts: {
+  audio: Blob;
+  filename: string;
+  modelIds: string[];
+  reference?: string;
+  language?: string;
+}): Promise<TranscribeResponse> {
+  const form = new FormData();
+  form.append("audio", opts.audio, opts.filename);
+  form.append("model_ids", JSON.stringify(opts.modelIds));
+  form.append("reference", opts.reference ?? "");
+  form.append("language", opts.language ?? "");
+  const res = await fetch("/api/transcribe", { method: "POST", body: form });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
 
-  listFinetuneJobs: () => request<FinetuneJobOut[]>("/api/finetune"),
-  getFinetuneJob: (id: string) => request<FinetuneJobOut>(`/api/finetune/${id}`),
-  startFinetune: (body: {
-    dataset_id: string;
-    base_model: string;
-    lora_rank?: number;
-    lora_alpha?: number;
-    learning_rate?: number;
-    epochs?: number;
-    batch_size?: number;
-    language?: string;
-  }) =>
-    request<FinetuneJobOut>("/api/finetune", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  cancelFinetune: (id: string) =>
-    request<FinetuneJobOut>(`/api/finetune/${id}/cancel`, { method: "POST" }),
+export async function listDatasets(): Promise<DatasetSummary[]> {
+  const res = await fetch("/api/datasets", { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
 
-  evaluate: (body: {
-    dataset_id: string;
-    base_model: string;
-    adapter_id?: string | null;
-    split?: "train" | "val";
-  }) =>
-    request<EvaluateResponse>("/api/evaluate", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-};
+export async function createDataset(name: string, description = ""): Promise<{ id: string }> {
+  const res = await fetch("/api/datasets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function getDataset(id: string): Promise<DatasetDetail> {
+  const res = await fetch(`/api/datasets/${id}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function addSampleUpload(
+  datasetId: string,
+  audio: Blob,
+  filename: string,
+  transcript: string,
+  split: "train" | "val",
+): Promise<{ id: string }> {
+  const form = new FormData();
+  form.append("audio", audio, filename);
+  form.append("transcript", transcript);
+  form.append("split", split);
+  const res = await fetch(`/api/datasets/${datasetId}/samples`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function addSampleFromPath(
+  datasetId: string,
+  audioPath: string,
+  transcript: string,
+  split: "train" | "val",
+): Promise<{ id: string }> {
+  const res = await fetch(`/api/datasets/${datasetId}/samples/from-path`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio_path: audioPath, transcript, split }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function updateSample(
+  datasetId: string,
+  sampleId: string,
+  body: { transcript?: string; split?: string },
+): Promise<void> {
+  const res = await fetch(`/api/datasets/${datasetId}/samples/${sampleId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+}
+
+export async function deleteSample(datasetId: string, sampleId: string): Promise<void> {
+  const res = await fetch(`/api/datasets/${datasetId}/samples/${sampleId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+}
+
+export async function listFinetuneJobs(): Promise<FinetuneJob[]> {
+  const res = await fetch("/api/finetune", { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function startFinetune(body: {
+  dataset_id: string;
+  base_model: string;
+  epochs: number;
+  lora_rank: number;
+  learning_rate: number;
+  batch_size: number;
+  language: string;
+}): Promise<FinetuneJob> {
+  const res = await fetch("/api/finetune", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function getFinetuneJob(id: string): Promise<FinetuneJob> {
+  const res = await fetch(`/api/finetune/${id}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function cancelFinetune(id: string): Promise<FinetuneJob> {
+  const res = await fetch(`/api/finetune/${id}/cancel`, { method: "POST" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function evaluate(body: {
+  dataset_id: string;
+  base_model: string;
+  adapter_id: string | null;
+  split?: string;
+}): Promise<EvaluateResponse> {
+  const res = await fetch("/api/evaluate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ split: "val", ...body }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}

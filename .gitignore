@@ -1,5 +1,4 @@
 # Dependencies
-node_modules/
 .venv/
 venv/
 __pycache__/
@@ -13,22 +12,27 @@ build/
 .env
 .env.local
 .env.*.local
-apps/api/.env
-apps/web/.env.local
+envs/.env
 
 # Runtime data
 data/audio/*
 data/datasets/*
 data/adapters/*
 data/runs/*
+data/profiles/*
+data/history/*
 data/*.db
+data/local_keys.json
 !data/.gitkeep
 !data/audio/.gitkeep
 !data/datasets/.gitkeep
 !data/adapters/.gitkeep
 !data/runs/.gitkeep
+!data/profiles/.gitkeep
+!data/history/.gitkeep
 
-# Next.js
+# Web
+apps/web/node_modules/
 apps/web/.next/
 apps/web/out/
 
@@ -39,10 +43,10 @@ apps/web/out/
 *.swp
 .cursor/
 .pytest_cache/
-apps/api/.pytest_cache/
 
-# Model caches (local)
+# Model caches
 .cache/
 *.pt
 *.bin
 huggingface/
+.ipynb_checkpoints/

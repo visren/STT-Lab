@@ -1,180 +1,148 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import type { ModelInfo, SettingsOut } from "@/lib/types";
+import { fetchSettings, updateSettings } from "@/lib/api";
+import type { ModelInfo } from "@/lib/types";
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<SettingsOut | null>(null);
-  const [models, setModels] = useState<ModelInfo[]>([]);
   const [openai, setOpenai] = useState("");
   const [deepgram, setDeepgram] = useState("");
-  const [assembly, setAssembly] = useState("");
+  const [assemblyai, setAssemblyai] = useState("");
   const [device, setDevice] = useState("auto");
+  const [keys, setKeys] = useState({ openai: false, deepgram: false, assemblyai: false });
+  const [models, setModels] = useState<ModelInfo[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = async () => {
-    const [s, m] = await Promise.all([api.settings(), api.models()]);
-    setSettings(s);
-    setModels(m);
+  async function load() {
+    const s = await fetchSettings();
     setDevice(s.whisper_device || "auto");
-  };
+    setKeys(s.keys);
+    setModels(s.models);
+  }
 
   useEffect(() => {
-    refresh().catch((e) => setError(e.message));
+    void load().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const save = async () => {
+  async function onSave() {
     setMsg(null);
     setError(null);
     try {
       const body: Record<string, string> = { whisper_device: device };
       if (openai.trim()) body.openai_api_key = openai.trim();
       if (deepgram.trim()) body.deepgram_api_key = deepgram.trim();
-      if (assembly.trim()) body.assemblyai_api_key = assembly.trim();
-      await api.updateSettings(body);
+      if (assemblyai.trim()) body.assemblyai_api_key = assemblyai.trim();
+      await updateSettings(body);
       setOpenai("");
       setDeepgram("");
-      setAssembly("");
-      await refresh();
-      setMsg("Settings saved locally to apps/api/.env");
+      setAssemblyai("");
+      await load();
+      setMsg("Saved locally to data/local_keys.json");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(e instanceof Error ? e.message : String(e));
     }
-  };
+  }
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto w-full max-w-6xl px-6 pb-20 pt-6">
       <section className="animate-rise">
-        <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight">
-          Settings
-        </h1>
-        <p className="mt-2 max-w-2xl text-[var(--muted)]">
-          Cloud keys stay on your machine. Local Whisper models download on first use.
+        <h1 className="font-display text-3xl text-foam md:text-4xl">Settings</h1>
+        <p className="mt-2 max-w-xl font-sans text-sm text-mist">
+          Cloud keys stay on this machine. Local Whisper downloads on first use.
         </p>
       </section>
 
-      {error && (
-        <p className="rounded-md border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-4 py-3 text-sm text-[var(--danger)]">
-          {error}
-        </p>
-      )}
-      {msg && <p className="text-sm text-[var(--accent-2)]">{msg}</p>}
+      {error && <p className="mt-4 font-sans text-sm text-ember">{error}</p>}
+      {msg && <p className="mt-4 font-sans text-sm text-tide">{msg}</p>}
 
-      <section className="animate-rise-delay-1 grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
-          <div className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
-            Cloud API keys
-          </div>
-          <KeyField
-            label="OpenAI"
-            configured={settings?.openai_configured}
-            value={openai}
-            onChange={setOpenai}
-            placeholder="sk-..."
-          />
-          <KeyField
-            label="Deepgram"
-            configured={settings?.deepgram_configured}
-            value={deepgram}
-            onChange={setDeepgram}
-            placeholder="dg-..."
-          />
-          <KeyField
-            label="AssemblyAI"
-            configured={settings?.assemblyai_configured}
-            value={assembly}
-            onChange={setAssembly}
-            placeholder="..."
-          />
-          <label className="block text-sm">
-            <span className="text-[var(--muted)]">Whisper device</span>
+      <div className="mt-8 grid gap-10 lg:grid-cols-2">
+        <section className="animate-rise space-y-4">
+          <label className="block space-y-1">
+            <span className="font-sans text-xs uppercase tracking-[0.14em] text-mist">
+              OpenAI API key {keys.openai ? "(set)" : "(missing)"}
+            </span>
+            <input
+              className="field"
+              type="password"
+              autoComplete="off"
+              placeholder={keys.openai ? "•••••••• (leave blank to keep)" : "sk-…"}
+              value={openai}
+              onChange={(e) => setOpenai(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="font-sans text-xs uppercase tracking-[0.14em] text-mist">
+              Deepgram API key {keys.deepgram ? "(set)" : "(missing)"}
+            </span>
+            <input
+              className="field"
+              type="password"
+              autoComplete="off"
+              placeholder={keys.deepgram ? "•••••••• (leave blank to keep)" : ""}
+              value={deepgram}
+              onChange={(e) => setDeepgram(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="font-sans text-xs uppercase tracking-[0.14em] text-mist">
+              AssemblyAI API key {keys.assemblyai ? "(set)" : "(missing)"}
+            </span>
+            <input
+              className="field"
+              type="password"
+              autoComplete="off"
+              placeholder={keys.assemblyai ? "•••••••• (leave blank to keep)" : ""}
+              value={assemblyai}
+              onChange={(e) => setAssemblyai(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="font-sans text-xs uppercase tracking-[0.14em] text-mist">
+              Whisper device
+            </span>
             <select
+              className="field"
               value={device}
               onChange={(e) => setDevice(e.target.value)}
-              className="mt-1 w-full rounded-md border border-[var(--line)] bg-black/20 px-3 py-2"
             >
               <option value="auto">auto</option>
               <option value="cpu">cpu</option>
               <option value="cuda">cuda</option>
             </select>
           </label>
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--ink)]"
-          >
+          <button type="button" className="btn-primary" onClick={() => void onSave()}>
             Save settings
           </button>
-          {settings && (
-            <p className="text-xs text-[var(--muted)]">Data directory: {settings.data_dir}</p>
-          )}
-        </div>
+          <p className="font-sans text-xs text-mist">
+            You can also set keys in the repo-root <code className="text-foam/80">.env</code> file.
+          </p>
+        </section>
 
-        <div className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
-          <div className="mb-3 text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
-            Model readiness
-          </div>
-          <ul className="space-y-2 text-sm">
+        <section className="animate-rise">
+          <h2 className="font-display text-2xl text-foam">Model readiness</h2>
+          <ul className="mt-4 divide-y divide-mist/10 border-y border-mist/15">
             {models.map((m) => (
               <li
                 key={m.id}
-                className="flex items-start justify-between gap-3 border-b border-white/5 py-2"
+                className="flex items-start justify-between gap-4 py-3 font-sans text-sm"
               >
-                <div>
-                  <div className="font-medium">{m.name}</div>
-                  <div className="text-xs text-[var(--muted)]">{m.provider}</div>
-                  {!m.ready && m.reason && (
-                    <div className="text-xs text-[var(--warn)]">{m.reason}</div>
-                  )}
-                </div>
+                <span>
+                  <span className="block text-foam">{m.name}</span>
+                  <span className="block text-xs text-mist">{m.provider}</span>
+                </span>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${
-                    m.ready
-                      ? "bg-[var(--ok)]/15 text-[var(--ok)]"
-                      : "bg-[var(--warn)]/15 text-[var(--warn)]"
+                  className={`shrink-0 text-xs ${
+                    m.ready ? "text-tide" : "text-ember"
                   }`}
                 >
-                  {m.ready ? "ready" : "blocked"}
+                  {m.ready ? "ready" : m.reason || "not ready"}
                 </span>
               </li>
             ))}
           </ul>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
-  );
-}
-
-function KeyField({
-  label,
-  configured,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  configured?: boolean;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-}) {
-  return (
-    <label className="block text-sm">
-      <span className="flex items-center justify-between text-[var(--muted)]">
-        {label}
-        <span className={configured ? "text-[var(--ok)]" : "text-[var(--warn)]"}>
-          {configured ? "configured" : "missing"}
-        </span>
-      </span>
-      <input
-        type="password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={configured ? "•••••••• (leave blank to keep)" : placeholder}
-        className="mt-1 w-full rounded-md border border-[var(--line)] bg-black/20 px-3 py-2 outline-none focus:ring-1 focus:ring-[var(--accent-2)]"
-      />
-    </label>
   );
 }

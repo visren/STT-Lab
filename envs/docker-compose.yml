@@ -1,0 +1,104 @@
+# Two environments:
+#   model-lab     — build / test / fine-tune models
+#   dataset-vault — private MinIO host for voice↔transcript datasets
+#
+# Usage (from repo root):
+#   cp envs/.env.example envs/.env   # set secrets
+#   docker compose -f envs/docker-compose.yml --env-file envs/.env up -d dataset-vault
+#   docker compose -f envs/docker-compose.yml --env-file envs/.env run --rm model-lab
+
+services:
+  dataset-vault:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: stt-dataset-vault
+    command: server /data --console-address ":9001"
+    ports:
+      - "${VAULT_API_PORT:-9000}:9000"
+      - "${VAULT_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${VAULT_ROOT_USER:-stt_vault_admin}
+      MINIO_ROOT_PASSWORD: ${VAULT_ROOT_PASSWORD:?Set VAULT_ROOT_PASSWORD in envs/.env}
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:${VAULT_CONSOLE_PORT:-9001}
+      # Enables sse-s3 when set (format: name:base64-32-bytes)
+      MINIO_KMS_SECRET_KEY: ${VAULT_KMS_SECRET_KEY:-}
+    volumes:
+      - dataset_vault_data:/data
+    networks:
+      - stt_envs
+
+  dataset-vault-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: stt-dataset-vault-init
+    depends_on:
+      dataset-vault:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      set -e;
+      echo 'Waiting for MinIO...';
+      i=0;
+      until mc alias set vault http://dataset-vault:9000 \"$${VAULT_ROOT_USER}\" \"$${VAULT_ROOT_PASSWORD}\"; do
+        i=$$((i+1));
+        if [ $$i -gt 30 ]; then echo 'MinIO not ready'; exit 1; fi;
+        sleep 2;
+      done;
+      mc mb -p \"vault/$${VAULT_BUCKET}\" || true;
+      mc anonymous set none \"vault/$${VAULT_BUCKET}\";
+      mc encrypt set sse-s3 \"vault/$${VAULT_BUCKET}\" || true;
+      if [ \"$${VAULT_ACCESS_KEY}\" != \"$${VAULT_ROOT_USER}\" ]; then
+        mc admin user add vault \"$${VAULT_ACCESS_KEY}\" \"$${VAULT_SECRET_KEY}\" || true;
+        mc admin policy attach vault readwrite --user \"$${VAULT_ACCESS_KEY}\" || true;
+      fi;
+      echo \"Vault ready: bucket=$${VAULT_BUCKET} (private, sse-s3)\";
+      "
+    environment:
+      VAULT_ROOT_USER: ${VAULT_ROOT_USER:-stt_vault_admin}
+      VAULT_ROOT_PASSWORD: ${VAULT_ROOT_PASSWORD:?Set VAULT_ROOT_PASSWORD in envs/.env}
+      VAULT_BUCKET: ${VAULT_BUCKET:-stt-datasets}
+      VAULT_ACCESS_KEY: ${VAULT_ACCESS_KEY:-stt_vault_app}
+      VAULT_SECRET_KEY: ${VAULT_SECRET_KEY:?Set VAULT_SECRET_KEY in envs/.env}
+    networks:
+      - stt_envs
+    restart: "no"
+
+  model-lab:
+    build:
+      context: ..
+      dockerfile: envs/model-lab/Dockerfile
+    image: stt-model-lab:local
+    container_name: stt-model-lab
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace
+      - model_lab_cache:/root/.cache
+    environment:
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      VAULT_ENDPOINT: http://dataset-vault:9000
+      VAULT_ACCESS_KEY: ${VAULT_ACCESS_KEY:-stt_vault_app}
+      VAULT_SECRET_KEY: ${VAULT_SECRET_KEY:-}
+      VAULT_BUCKET: ${VAULT_BUCKET:-stt-datasets}
+      VAULT_SECURE: "false"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
+    depends_on:
+      - dataset-vault
+    networks:
+      - stt_envs
+    # GPU (optional): uncomment when host has NVIDIA Container Toolkit
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: [gpu]
+    stdin_open: true
+    tty: true
+    command: ["bash"]
+
+volumes:
+  dataset_vault_data:
+  model_lab_cache:
+
+networks:
+  stt_envs:
+    driver: bridge

@@ -1,226 +1,234 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import type { DatasetOut, SampleOut } from "@/lib/types";
+import { useCallback, useEffect, useState } from "react";
+import {
+  addSampleUpload,
+  createDataset,
+  deleteSample,
+  getDataset,
+  listDatasets,
+  updateSample,
+} from "@/lib/api";
+import type { DatasetDetail, DatasetSummary } from "@/lib/types";
 
 export default function DatasetsPage() {
-  const [datasets, setDatasets] = useState<DatasetOut[]>([]);
-  const [activeId, setActiveId] = useState<string>("");
-  const [active, setActive] = useState<DatasetOut | null>(null);
+  const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<DatasetDetail | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [newTranscript, setNewTranscript] = useState("");
+  const [newSplit, setNewSplit] = useState<"train" | "val">("train");
+  const [file, setFile] = useState<File | null>(null);
 
-  const refreshList = async () => {
-    const list = await api.listDatasets();
-    setDatasets(list);
-    return list;
-  };
-
-  const loadDataset = async (id: string) => {
-    const d = await api.getDataset(id);
-    setActive(d);
-    setActiveId(id);
-  };
-
-  useEffect(() => {
-    refreshList()
-      .then((list) => {
-        if (list[0]) return loadDataset(list[0].id);
-      })
-      .catch((e) => setError(e.message));
+  const refresh = useCallback(async () => {
+    const rows = await listDatasets();
+    setDatasets(rows);
+    return rows;
   }, []);
 
-  const create = async () => {
-    try {
-      const d = await api.createDataset(name.trim() || "My voice set");
-      setName("");
-      await refreshList();
-      await loadDataset(d.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Create failed");
-    }
-  };
+  const loadDetail = useCallback(async (id: string) => {
+    const d = await getDataset(id);
+    setDetail(d);
+    setActiveId(id);
+  }, []);
 
-  const addUpload = async (file: File) => {
-    if (!activeId) return;
-    setUploading(true);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await refresh();
+        if (rows[0]) await loadDetail(rows[0].id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, [refresh, loadDetail]);
+
+  async function onCreate() {
     setError(null);
     try {
-      await api.addSample(activeId, {
-        file,
-        filename: file.name,
-        transcript: "",
-        split: "train",
-      });
-      await loadDataset(activeId);
-      await refreshList();
+      const created = await createDataset(name.trim() || "My voice");
+      setName("");
+      await refresh();
+      await loadDetail(created.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setUploading(false);
+      setError(e instanceof Error ? e.message : String(e));
     }
-  };
+  }
 
-  const updateSample = async (sample: SampleOut, patch: { transcript?: string; split?: "train" | "val" }) => {
-    if (!activeId) return;
-    await api.updateSample(activeId, sample.id, patch);
-    await loadDataset(activeId);
-    await refreshList();
-  };
-
-  const removeSample = async (sampleId: string) => {
-    if (!activeId) return;
-    await api.deleteSample(activeId, sampleId);
-    await loadDataset(activeId);
-    await refreshList();
-  };
+  async function onAddSample() {
+    if (!activeId || !file || !newTranscript.trim()) return;
+    setError(null);
+    try {
+      await addSampleUpload(activeId, file, file.name, newTranscript.trim(), newSplit);
+      setFile(null);
+      setNewTranscript("");
+      await refresh();
+      await loadDetail(activeId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto w-full max-w-6xl px-6 pb-20 pt-6">
       <section className="animate-rise">
-        <h1 className="font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-tight">
-          Datasets
-        </h1>
-        <p className="mt-2 max-w-2xl text-[var(--muted)]">
-          Collect voice↔transcript pairs. Mark a validation split before fine-tuning.
+        <h1 className="font-display text-3xl text-foam md:text-4xl">Datasets</h1>
+        <p className="mt-2 max-w-xl font-sans text-sm text-mist">
+          Collect voice ↔ transcript pairs. Mark train and val before fine-tuning.
         </p>
       </section>
 
-      {error && (
-        <p className="rounded-md border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-4 py-3 text-sm text-[var(--danger)]">
-          {error}
-        </p>
-      )}
+      {error && <p className="mt-4 font-sans text-sm text-ember">{error}</p>}
 
-      <section className="animate-rise-delay-1 grid gap-6 lg:grid-cols-[280px_1fr]">
+      <div className="mt-8 grid gap-10 lg:grid-cols-[240px_1fr]">
         <aside className="space-y-4">
-          <div className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4">
-            <div className="mb-2 text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
-              New dataset
-            </div>
+          <div className="flex gap-2">
             <input
+              className="field"
+              placeholder="Dataset name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Name"
-              className="mb-2 w-full rounded-md border border-[var(--line)] bg-black/20 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[var(--accent-2)]"
             />
-            <button
-              type="button"
-              onClick={create}
-              className="w-full rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-[var(--ink)]"
-            >
-              Create
+            <button type="button" className="btn-primary shrink-0" onClick={() => void onCreate()}>
+              Add
             </button>
           </div>
-          <div className="space-y-1">
+          <ul className="space-y-1">
             {datasets.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => loadDataset(d.id)}
-                className={`block w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  d.id === activeId
-                    ? "bg-[var(--accent)] text-[var(--ink)]"
-                    : "hover:bg-white/5"
-                }`}
-              >
-                <div className="font-medium">{d.name}</div>
-                <div className={d.id === activeId ? "opacity-70" : "text-[var(--muted)]"}>
-                  {d.train_count} train · {d.val_count} val
-                </div>
-              </button>
+              <li key={d.id}>
+                <button
+                  type="button"
+                  onClick={() => void loadDetail(d.id)}
+                  className={`w-full rounded-md px-3 py-2 text-left font-sans text-sm transition ${
+                    activeId === d.id
+                      ? "bg-tide/15 text-foam"
+                      : "text-mist hover:bg-ink-800/50 hover:text-foam"
+                  }`}
+                >
+                  <span className="block">{d.name}</span>
+                  <span className="block text-xs opacity-70">
+                    {d.train_count} train · {d.val_count} val
+                  </span>
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         </aside>
 
-        <div className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 backdrop-blur">
-          {!active ? (
-            <p className="text-[var(--muted)]">Create or select a dataset.</p>
+        <section>
+          {!detail ? (
+            <p className="font-sans text-sm text-mist">Create a dataset to start.</p>
           ) : (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold">
-                    {active.name}
-                  </h2>
-                  <p className="text-sm text-[var(--muted)]">
-                    {active.sample_count} samples · warn if under ~30 before fine-tune
-                  </p>
+            <div className="animate-rise space-y-8">
+              <div>
+                <h2 className="font-display text-2xl text-foam">{detail.name}</h2>
+                <p className="font-sans text-sm text-mist">
+                  {detail.train_count} train · {detail.val_count} val
+                  {detail.train_count < 30 && (
+                    <span className="text-ember"> · recommend ~30+ train samples</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="space-y-3 border-t border-mist/15 pt-6">
+                <p className="font-sans text-xs uppercase tracking-[0.14em] text-mist">
+                  Add sample
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="btn-ghost cursor-pointer">
+                    {file ? file.name : "Choose audio"}
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <select
+                    className="field w-auto"
+                    value={newSplit}
+                    onChange={(e) => setNewSplit(e.target.value as "train" | "val")}
+                  >
+                    <option value="train">train</option>
+                    <option value="val">val</option>
+                  </select>
                 </div>
-                <label className="cursor-pointer rounded-md border border-[var(--line)] px-3 py-2 text-sm hover:border-[var(--accent-2)]">
-                  {uploading ? "Uploading…" : "Add audio"}
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    className="hidden"
-                    disabled={uploading}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void addUpload(f);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
+                <textarea
+                  className="field min-h-[80px]"
+                  placeholder="Ground-truth transcript"
+                  value={newTranscript}
+                  onChange={(e) => setNewTranscript(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!file || !newTranscript.trim()}
+                  onClick={() => void onAddSample()}
+                >
+                  Add to dataset
+                </button>
               </div>
 
               <div className="space-y-3">
-                {active.samples.length === 0 && (
-                  <p className="text-sm text-[var(--muted)]">
-                    No samples yet. Upload clips or save from Compare.
-                  </p>
+                {detail.samples.length === 0 && (
+                  <p className="font-sans text-sm text-mist">No samples yet.</p>
                 )}
-                {active.samples.map((s) => (
-                  <div
+                {detail.samples.map((s) => (
+                  <article
                     key={s.id}
-                    className="rounded-lg border border-white/5 bg-black/20 p-3"
+                    className="border-t border-mist/10 py-4"
                   >
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
-                      <span className="truncate font-mono">{s.audio_path.split("/").pop()}</span>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={s.split}
-                          onChange={(e) =>
-                            updateSample(s, { split: e.target.value as "train" | "val" })
-                          }
-                          className="rounded border border-[var(--line)] bg-transparent px-2 py-1"
-                        >
-                          <option value="train">train</option>
-                          <option value="val">val</option>
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => removeSample(s.id)}
-                          className="text-[var(--danger)]"
-                        >
-                          Delete
-                        </button>
-                      </div>
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <select
+                        className="field w-auto"
+                        value={s.split}
+                        onChange={(e) =>
+                          void updateSample(detail.id, s.id, {
+                            split: e.target.value,
+                          }).then(() => loadDetail(detail.id))
+                        }
+                      >
+                        <option value="train">train</option>
+                        <option value="val">val</option>
+                      </select>
+                      <span className="font-sans text-xs text-mist truncate max-w-[280px]">
+                        {s.audio_path.split("/").pop()}
+                        {s.duration_sec != null
+                          ? ` · ${s.duration_sec.toFixed(1)}s`
+                          : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className="ml-auto font-sans text-xs text-ember hover:underline"
+                        onClick={() =>
+                          void deleteSample(detail.id, s.id).then(() => {
+                            void refresh();
+                            void loadDetail(detail.id);
+                          })
+                        }
+                      >
+                        Delete
+                      </button>
                     </div>
-                    <audio
-                      controls
-                      src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/audio?path=${encodeURIComponent(s.audio_path)}`}
-                      className="mb-2 w-full"
-                    />
                     <textarea
+                      className="field min-h-[70px]"
                       defaultValue={s.transcript}
-                      rows={2}
-                      placeholder="Ground-truth transcript"
-                      className="w-full rounded-md border border-[var(--line)] bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[var(--accent-2)]"
                       onBlur={(e) => {
                         if (e.target.value !== s.transcript) {
-                          void updateSample(s, { transcript: e.target.value });
+                          void updateSample(detail.id, s.id, {
+                            transcript: e.target.value,
+                          }).then(() => loadDetail(detail.id));
                         }
                       }}
                     />
-                  </div>
+                  </article>
                 ))}
               </div>
             </div>
           )}
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-from app.services.metrics import compute_wer_cer, word_diff
+from stt_lab.services.metrics import compute_wer_cer, word_diff
 
 
 def test_wer_perfect():
