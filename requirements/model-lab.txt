@@ -1,0 +1,3 @@
+# model-lab Docker image — ML compute without Jupyter / desktop GUI
+-r base.txt
+-r ml.txt

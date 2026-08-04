@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 
 from stt_lab.config import DATASETS_DIR, ensure_dirs  # noqa: E402
 from stt_lab.db import Dataset, FinetuneJob, Sample, SessionLocal, init_db, utcnow  # noqa: E402
-from stt_lab.finetune_backends import BackendName, get_backend  # noqa: E402
+from stt_lab.finetune_backends import BackendName  # noqa: E402
 from stt_lab.pipeline import run_dictate  # noqa: E402
 from stt_lab.policy import DataPolicy  # noqa: E402
 from stt_lab.profiles import (  # noqa: E402
@@ -36,6 +36,11 @@ from stt_lab.profiles import (  # noqa: E402
 from stt_lab.providers.registry import list_models  # noqa: E402
 from stt_lab.services.audio import probe_duration  # noqa: E402
 from stt_lab.services.evaluate import run_evaluation  # noqa: E402
+from stt_lab.services.finetune import (  # noqa: E402
+    enqueue_finetune,
+    job_snapshot,
+    wait_for_finetune,
+)
 from stt_lab.services.metrics import word_diff  # noqa: E402
 from stt_lab.services.transcribe import run_transcription  # noqa: E402
 
@@ -204,46 +209,17 @@ def start_finetune(
 ) -> str:
     db = SessionLocal()
     try:
-        train_count = (
-            db.query(Sample)
-            .filter(Sample.dataset_id == dataset_id, Sample.split == "train")
-            .count()
-        )
-        val_count = (
-            db.query(Sample)
-            .filter(Sample.dataset_id == dataset_id, Sample.split == "val")
-            .count()
-        )
-        if train_count < 1:
-            raise ValueError("Need at least 1 train sample")
-        if val_count < 1:
-            raise ValueError("Need at least 1 val sample")
-
-        cfg = {
-            "lora_rank": lora_rank,
-            "lora_alpha": 32,
-            "learning_rate": learning_rate,
-            "epochs": epochs,
-            "batch_size": batch_size,
-            "language": language,
-            "train_count": train_count,
-            "val_count": val_count,
-            "warn_low_samples": train_count < 30,
-            "backend": backend,
-        }
-        job = FinetuneJob(
-            id=uuid.uuid4().hex,
+        job = enqueue_finetune(
+            db,
             dataset_id=dataset_id,
             base_model=base_model,
-            status="queued",
-            progress=0.0,
-            logs="",
-            config_json=json.dumps(cfg),
+            epochs=epochs,
+            lora_rank=lora_rank,
+            learning_rate=learning_rate,
+            batch_size=batch_size,
+            language=language,
+            backend=backend,
         )
-        db.add(job)
-        db.commit()
-        db.refresh(job)
-        get_backend(backend).start(db, job)
         return job.id
     finally:
         db.close()
@@ -255,35 +231,23 @@ def job_status(job_id: str) -> dict:
         job = db.get(FinetuneJob, job_id)
         if not job:
             raise ValueError(f"Unknown job: {job_id}")
-        return {
-            "id": job.id,
-            "status": job.status,
-            "progress": job.progress,
-            "error": job.error,
-            "adapter_path": job.adapter_path,
-            "backend": (job.get_config() or {}).get("backend", "local"),
-            "logs_tail": "\n".join((job.logs or "").splitlines()[-20:]),
-        }
+        return job_snapshot(job)
     finally:
         db.close()
 
 
 def wait_for_job(job_id: str, poll_sec: float = 2.0, timeout_sec: float = 3600):
-    import time
-
-    started = time.time()
-    while True:
-        st = job_status(job_id)
+    def _print(st: dict) -> None:
         print(f"{st['status']}  progress={st['progress']:.0%}")
-        if st["status"] in ("completed", "failed", "cancelled"):
-            if st["logs_tail"]:
-                print(st["logs_tail"])
-            if st["error"]:
-                print("ERROR:", st["error"])
-            return st
-        if time.time() - started > timeout_sec:
-            raise TimeoutError(f"Job {job_id} still {st['status']} after {timeout_sec}s")
-        time.sleep(poll_sec)
+
+    st = wait_for_finetune(
+        job_id, poll_sec=poll_sec, timeout_sec=timeout_sec, on_poll=_print
+    )
+    if st.get("logs_tail"):
+        print(st["logs_tail"])
+    if st.get("error"):
+        print("ERROR:", st["error"])
+    return st
 
 
 def evaluate(dataset_id: str, base_model: str, adapter_id: str | None, split: str = "val"):

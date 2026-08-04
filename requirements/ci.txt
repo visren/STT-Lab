@@ -1,0 +1,2 @@
+# Fast CI / unit tests (no torch / whisper wheels)
+-r base.txt

@@ -24,9 +24,10 @@ class Settings(BaseSettings):
     deepgram_api_key: str = ""
     assemblyai_api_key: str = ""
     whisper_device: str = "auto"  # auto | cpu | cuda
-    # Reserved for future cloud training backends (Modal / HF Jobs / RunPod)
-    cloud_finetune_backend: str = ""  # e.g. modal | hf_jobs | runpod
+    # Cloud training: stub (lifecycle dry-run) | modal | hf_jobs | runpod
+    cloud_finetune_backend: str = "stub"
     cloud_finetune_token: str = ""
+    cloud_finetune_endpoint: str = ""  # optional provider-specific API URL
     # Dataset vault (MinIO / S3-compatible)
     vault_endpoint: str = ""  # e.g. http://127.0.0.1:9000
     vault_access_key: str = ""

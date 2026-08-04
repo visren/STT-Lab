@@ -77,18 +77,22 @@ stt_lab/
   db.py                # datasets + fine-tune job metadata
   config.py            # env + paths
 
-apps/dictation/        # future local frontend (Swift or Tauri)
 notebooks/             # research UI
+apps/dictation/        # local hotkey dictation (Python MVP)
 envs/
   model-lab/           # Docker image + entrypoint for build/test
   model_lab/           # CLI (smoke, finetune)
   docker-compose.yml   # model-lab + dataset-vault
+  docker-compose.prod.yml  # TLS proxy + backup profile
+  vault/               # Caddyfile, certs, backup/restore scripts
 data/
   profiles/            # *.json runnable profiles
   adapters/            # LoRA adapters
   datasets/            # local working copies of voice datasets
   history/             # optional dictation history (policy-gated)
+  vault-backups/       # encrypted/plain vault archives
 ```
+
 
 ### 3.2 Environment contracts
 

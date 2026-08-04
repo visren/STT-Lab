@@ -1,16 +1,17 @@
 # STT Lab
 
-Compare speech-to-text models (local Whisper + cloud APIs), build a personal voice↔transcript dataset, and LoRA-fine-tune Whisper on your own samples.
+Notebook-first lab to compare speech-to-text models, collect personal voice↔transcript data, LoRA-fine-tune Whisper, and run a local dictation app with local/cloud STT.
 
 ## Layout
 
-```
+```text
 stt-lab/
-  apps/web/       # Next.js UI
-  apps/api/       # FastAPI
-  stt_lab/        # core library (providers, metrics, fine-tune)
-  notebooks/      # optional research notebook
-  data/           # runtime audio, datasets, adapters, sqlite
+  stt_lab/            # core library (providers, pipeline, policy, vault, cloud FT)
+  notebooks/          # research UI
+  apps/dictation/     # local hotkey dictation app
+  envs/               # model-lab + dataset-vault (Docker, TLS, backups)
+  docs/               # PRD + architecture
+  data/               # runtime audio, datasets, adapters, profiles
   requirements.txt
   .env.example
 ```
@@ -20,50 +21,78 @@ stt-lab/
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # optional cloud keys
+make install                 # or: pip install -r requirements.txt && pip install -e .
+cp .env.example .env         # optional cloud keys + vault client settings
 
-cd apps/web && npm install && cd ../..
+# macOS dictation mic backend
+brew install portaudio
 ```
 
-## Run
+Fast unit-test install (no torch):
 
-Terminal 1 — API:
+```bash
+make install-ci && make test-ci
+```
+
+## Build (model-lab)
+
+```bash
+cp envs/.env.example envs/.env   # once
+make vault-up
+make model-lab-build             # BuildKit + CPU torch + multi-stage
+make model-lab-doctor
+make model-lab                   # interactive shell
+```
+
+Dependency layers live under `requirements/` (`base`, `ml`, `research`, `dictation`, `model-lab`, `ci`).
+
+
+## Research notebook
 
 ```bash
 source .venv/bin/activate
-python -m apps.api
-# or: uvicorn apps.api.main:app --reload --port 8000
+cd notebooks && jupyter lab stt_lab.ipynb
 ```
 
-Terminal 2 — Web:
+```python
+import helpers as h
+h.compare("data/audio/clip.wav", ["whisper-tiny"], reference="…")
+h.start_finetune(dataset_id, base_model="tiny", backend="local")   # or backend="cloud"
+h.export_profile(profile_id="mine", name="Mine", base_model="tiny")
+```
+
+## Dictation app
 
 ```bash
-cd apps/web && npm run dev
+python -m apps.dictation --profile demo-local
+# Hold Ctrl+Alt+Space to talk; Ctrl+Alt+L / Ctrl+Alt+C toggles local/cloud
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+See [`apps/dictation/README.md`](apps/dictation/README.md).
 
-## Workflow
+## Environments
 
-1. **Compare** — upload/record audio, select models, run side-by-side (WER/CER when you provide a reference)
-2. **Datasets** — save clips + ground-truth transcripts; mark train / val
-3. **Fine-tune** — LoRA-adapt Whisper locally; cancel anytime; evaluate before/after on val
-4. **Settings** — cloud API keys + model readiness (also via `.env`)
+See [`envs/README.md`](envs/README.md) and [`envs/HARDENING.md`](envs/HARDENING.md).
 
-Adapted adapters appear in the Compare model list as `adapted-…`.
+```bash
+cp envs/.env.example envs/.env   # set vault passwords
+docker compose -f envs/docker-compose.yml --env-file envs/.env up -d dataset-vault dataset-vault-init
+docker compose -f envs/docker-compose.yml --env-file envs/.env run --rm model-lab
+```
 
-## Models
+- **model-lab** — build/test/fine-tune in Docker  
+- **dataset-vault** — private MinIO; prod overlay adds TLS (Caddy) + backups  
 
-| Kind | IDs |
+## Fine-tune backends
+
+| Backend | Notes |
 |---|---|
-| Local | `whisper-tiny`, `whisper-base`, `whisper-small`, `whisper-medium` |
-| Cloud | `openai-whisper-1`, `deepgram-nova-2`, `assemblyai-best` |
-| Adapted | completed LoRA jobs |
+| `local` | Whisper LoRA via PEFT |
+| `cloud` | Uses `CLOUD_FINETUNE_BACKEND` (`stub` dry-run lifecycle; `modal`/`hf_jobs`/`runpod` reserved) |
 
 ## Notes
 
-- Prefer ~30+ train samples and at least one val sample before serious fine-tunes
-- First Whisper run downloads weights
-- Keys in `.env` or Settings (`data/local_keys.json`, gitignored)
-- Notebook workflow remains available under `notebooks/`
+- Prefer ~30+ train samples and at least one val sample before serious fine-tunes  
+- Keys / vault credentials live in `.env` (gitignored)  
+- Product: [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md)  
+- Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)

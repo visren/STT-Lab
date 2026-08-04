@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stt-lab"
+version = "0.2.0"
+description = "Notebook-first STT research lab, model-lab, dataset vault, and local dictation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "STT Lab" }]
+dependencies = []
+
+[project.optional-dependencies]
+ci = []
+dictation = []
+research = []
+
+[project.scripts]
+stt-dictate = "apps.dictation.app:main"
+stt-model-lab = "envs.model_lab.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["stt_lab*", "apps*", "envs*", "notebooks*"]
+exclude = ["tests*", "data*", "docs*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008"]

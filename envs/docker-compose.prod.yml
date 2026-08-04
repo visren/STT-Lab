@@ -1,0 +1,88 @@
+# Production-oriented overlay for dataset-vault.
+#
+# Usage:
+#   ./envs/vault/scripts/gen-certs.sh
+#   docker compose -f envs/docker-compose.yml -f envs/docker-compose.prod.yml \
+#     --env-file envs/.env up -d
+#
+# Effects:
+#   - MinIO API/console not published on host (internal only)
+#   - Caddy terminates TLS and proxies S3 API
+#   - Healthcheck on MinIO
+#   - Console left internal-only (use `docker exec` / tunnel if needed)
+
+services:
+  dataset-vault:
+    ports: !reset []
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    environment:
+      MINIO_BROWSER: "off"
+      MINIO_UPDATE: "on"
+
+  dataset-vault-init:
+    depends_on:
+      dataset-vault:
+        condition: service_healthy
+
+  vault-proxy:
+    image: caddy:2.9-alpine
+    container_name: stt-vault-proxy
+    depends_on:
+      dataset-vault:
+        condition: service_healthy
+    ports:
+      - "${VAULT_TLS_PORT:-443}:443"
+      - "${VAULT_HTTP_PORT:-80}:80"
+    environment:
+      VAULT_TLS_DOMAIN: ${VAULT_TLS_DOMAIN:-vault.local}
+      VAULT_TLS_EMAIL: ${VAULT_TLS_EMAIL:-}
+    volumes:
+      - ./vault/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ./vault/certs:/certs:ro
+      - vault_caddy_data:/data
+      - vault_caddy_config:/config
+    networks:
+      - stt_envs
+    restart: unless-stopped
+
+  # Optional scheduled backup sidecar (daily). Mount host backup dir.
+  vault-backup:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: stt-vault-backup
+    profiles: ["backup"]
+    depends_on:
+      dataset-vault:
+        condition: service_healthy
+    environment:
+      VAULT_ROOT_USER: ${VAULT_ROOT_USER:-stt_vault_admin}
+      VAULT_ROOT_PASSWORD: ${VAULT_ROOT_PASSWORD:?Set VAULT_ROOT_PASSWORD}
+      VAULT_BUCKET: ${VAULT_BUCKET:-stt-datasets}
+    volumes:
+      - ${VAULT_BACKUP_HOST_DIR:-../data/vault-backups}:/backups
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set vault http://dataset-vault:9000 \"$${VAULT_ROOT_USER}\" \"$${VAULT_ROOT_PASSWORD}\";
+      while true; do
+        STAMP=$$(date -u +%Y%m%dT%H%M%SZ);
+        DEST=/backups/mirror-$${STAMP};
+        mkdir -p \"$$DEST\";
+        mc mirror --overwrite \"vault/$${VAULT_BUCKET}\" \"$$DEST\";
+        tar -C /backups -czf \"/backups/vault-$${VAULT_BUCKET}-$${STAMP}.tar.gz\" \"mirror-$${STAMP}\";
+        rm -rf \"$$DEST\";
+        echo \"backup ok $${STAMP}\";
+        sleep $${VAULT_BACKUP_INTERVAL_SEC:-86400};
+      done
+      "
+    networks:
+      - stt_envs
+    restart: unless-stopped
+
+volumes:
+  vault_caddy_data:
+  vault_caddy_config:

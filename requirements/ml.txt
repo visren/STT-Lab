@@ -1,0 +1,11 @@
+# Speech / training stack (install torch first in Docker via CPU index)
+faster-whisper>=1.1.0,<2
+openai>=1.54.0,<2
+deepgram-sdk>=3.7.0,<5
+assemblyai>=0.35.0,<1
+transformers>=4.46.0,<5
+peft>=0.13.0,<0.16
+datasets>=3.0.0,<4
+accelerate>=1.0.0,<2
+librosa>=0.10.2,<1
+evaluate>=0.4.3,<1

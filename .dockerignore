@@ -1,0 +1,52 @@
+# Git
+.git
+.github
+.gitignore
+
+# Env / secrets
+.env
+.env.*
+envs/.env
+!**/.env.example
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.ipynb_checkpoints
+
+# Runtime / heavy local artifacts
+data/audio/**
+data/datasets/**
+data/adapters/**
+data/runs/**
+data/history/**
+data/vault-backups/**
+data/*.db
+data/local_keys.json
+!data/**/.gitkeep
+!data/profiles/demo-*.json
+
+# Docs / IDE (not needed in image)
+docs
+*.md
+!README.md
+!requirements/**/*.txt
+.cursor
+.DS_Store
+.idea
+.vscode
+
+# Caches / certs
+.cache
+.docker-cache
+envs/vault/certs/**
+huggingface
+
+# Notebooks checkpoints
+notebooks/.ipynb_checkpoints

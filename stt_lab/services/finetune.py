@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import json
 import threading
+import time
 import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
 from ..config import RUNS_DIR, ensure_dirs
 from ..db import FinetuneJob, Sample, SessionLocal, utcnow
 from ..providers.registry import adapter_dir_for
+
+if TYPE_CHECKING:
+    from ..finetune_backends import BackendName
 
 _jobs_lock = threading.Lock()
 _running: dict[str, threading.Thread] = {}
@@ -293,3 +300,99 @@ def cancel_finetune_job(db: Session, job: FinetuneJob) -> FinetuneJob:
     db.commit()
     db.refresh(job)
     return job
+
+
+def enqueue_finetune(
+    db: Session,
+    *,
+    dataset_id: str,
+    base_model: str = "tiny",
+    epochs: int = 3,
+    lora_rank: int = 16,
+    learning_rate: float = 1e-4,
+    batch_size: int = 1,
+    language: str = "en",
+    backend: BackendName = "local",
+) -> FinetuneJob:
+    """Create a FinetuneJob row and start it on the selected backend."""
+    from ..finetune_backends import get_backend
+
+    train_count = (
+        db.query(Sample)
+        .filter(Sample.dataset_id == dataset_id, Sample.split == "train")
+        .count()
+    )
+    val_count = (
+        db.query(Sample)
+        .filter(Sample.dataset_id == dataset_id, Sample.split == "val")
+        .count()
+    )
+    if train_count < 1:
+        raise ValueError("Need at least 1 train sample")
+    if val_count < 1:
+        raise ValueError("Need at least 1 val sample")
+
+    cfg = {
+        "lora_rank": lora_rank,
+        "lora_alpha": 32,
+        "learning_rate": learning_rate,
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "language": language,
+        "train_count": train_count,
+        "val_count": val_count,
+        "warn_low_samples": train_count < 30,
+        "backend": backend,
+    }
+    job = FinetuneJob(
+        id=uuid.uuid4().hex,
+        dataset_id=dataset_id,
+        base_model=base_model,
+        status="queued",
+        progress=0.0,
+        logs="",
+        config_json=json.dumps(cfg),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    get_backend(backend).start(db, job)
+    return job
+
+
+def job_snapshot(job: FinetuneJob) -> dict:
+    return {
+        "id": job.id,
+        "status": job.status,
+        "progress": job.progress,
+        "error": job.error,
+        "adapter_path": job.adapter_path,
+        "backend": (job.get_config() or {}).get("backend", "local"),
+        "logs_tail": "\n".join((job.logs or "").splitlines()[-20:]),
+    }
+
+
+def wait_for_finetune(
+    job_id: str,
+    *,
+    poll_sec: float = 2.0,
+    timeout_sec: float = 3600,
+    on_poll=None,
+) -> dict:
+    started = time.time()
+    while True:
+        db = SessionLocal()
+        try:
+            job = db.get(FinetuneJob, job_id)
+            if not job:
+                raise ValueError(f"Unknown job: {job_id}")
+            st = job_snapshot(job)
+        finally:
+            db.close()
+        if on_poll:
+            on_poll(st)
+        if st["status"] in ("completed", "failed", "cancelled"):
+            return st
+        if time.time() - started > timeout_sec:
+            raise TimeoutError(f"Job {job_id} still {st['status']} after {timeout_sec}s")
+        time.sleep(poll_sec)

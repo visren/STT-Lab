@@ -7,9 +7,10 @@ import asyncio
 import json
 from pathlib import Path
 
-from stt_lab.config import ROOT, ensure_dirs
+from stt_lab.config import ensure_dirs
 from stt_lab.db import SessionLocal, init_db
 from stt_lab.providers.registry import list_models
+from stt_lab.services.finetune import enqueue_finetune, wait_for_finetune
 from stt_lab.services.transcribe import run_transcription
 
 
@@ -42,18 +43,32 @@ def cmd_models(_: argparse.Namespace) -> None:
 
 
 def cmd_finetune(args: argparse.Namespace) -> None:
-    from notebooks import helpers as h
-
-    job_id = h.start_finetune(
-        args.dataset_id,
-        base_model=args.base_model,
-        epochs=args.epochs,
-        lora_rank=args.lora_rank,
-        backend=args.backend,
-    )
+    ensure_dirs()
+    init_db()
+    db = SessionLocal()
+    try:
+        job = enqueue_finetune(
+            db,
+            dataset_id=args.dataset_id,
+            base_model=args.base_model,
+            epochs=args.epochs,
+            lora_rank=args.lora_rank,
+            backend=args.backend,
+        )
+        job_id = job.id
+    finally:
+        db.close()
     print("job_id:", job_id)
     if args.wait:
-        print(h.wait_for_job(job_id))
+        def _print(st: dict) -> None:
+            print(f"{st['status']}  progress={st['progress']:.0%}")
+
+        st = wait_for_finetune(job_id, on_poll=_print)
+        if st.get("logs_tail"):
+            print(st["logs_tail"])
+        if st.get("error"):
+            print("ERROR:", st["error"])
+        print(json.dumps(st, indent=2))
 
 
 def main() -> None:
@@ -79,12 +94,6 @@ def main() -> None:
     p_ft.set_defaults(func=cmd_finetune)
 
     args = parser.parse_args()
-    # Ensure notebooks helpers importable when running finetune
-    import sys
-
-    nb = str(ROOT / "notebooks")
-    if nb not in sys.path:
-        sys.path.insert(0, nb)
     args.func(args)
 
 

@@ -47,6 +47,20 @@ VAULT_SECURE=false
 
 ## model-lab
 
+Optimized Docker image (`envs/model-lab/Dockerfile`):
+
+- BuildKit apt/pip caches  
+- CPU torch wheels by default (override `TORCH_INDEX_URL` for CUDA)  
+- Multi-stage build (compilers not in runtime)  
+- Non-root `lab` user + cache volume at `/home/lab/.cache`  
+
+```bash
+make model-lab-build
+make model-lab-doctor
+make model-lab
+# inside: doctor | models | smoke | finetune
+```
+
 - Isolated Python image with `stt_lab` + training deps  
 - Repo mounted at `/workspace`  
 - Commands:
@@ -54,7 +68,7 @@ VAULT_SECURE=false
   - `python -m envs.model_lab.cli smoke --audio ... --models whisper-tiny,whisper-base`
   - `python -m envs.model_lab.cli finetune --dataset-id ... --wait`
 
-GPU: uncomment the `deploy.resources` section in `docker-compose.yml` when NVIDIA Container Toolkit is available, and set `WHISPER_DEVICE=cuda`.
+GPU: uncomment the `deploy.resources` section in `docker-compose.yml`, set `WHISPER_DEVICE=cuda`, and rebuild with e.g. `TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124`.
 
 ## dataset-vault
 
@@ -75,13 +89,17 @@ h.vault_pull_dataset(dataset_id)
 h.vault_list("datasets/")
 ```
 
-### Production hardening (recommended)
+### Production hardening
 
-- Put vault behind TLS (Caddy/nginx or MinIO certs)  
-- Use distinct least-privilege keys per machine/user  
-- Disable console port on public networks  
-- Back up the `dataset_vault_data` volume encrypted  
-- For cloud: point `VAULT_ENDPOINT` at private S3/MinIO with the same client  
+Dev compose already binds MinIO to `127.0.0.1` only. For TLS + backup tooling see **[`HARDENING.md`](HARDENING.md)**.
+
+```bash
+./envs/vault/scripts/gen-certs.sh
+docker compose -f envs/docker-compose.yml -f envs/docker-compose.prod.yml \
+  --env-file envs/.env up -d
+
+./envs/vault/scripts/backup.sh
+```
 
 ## Stop
 

@@ -1,0 +1,22 @@
+# TLS termination in front of MinIO (S3 API).
+# MinIO stays on the internal Docker network; only Caddy is published.
+
+{
+	email {$VAULT_TLS_EMAIL}
+}
+
+{$VAULT_TLS_DOMAIN:localhost} {
+	reverse_proxy dataset-vault:9000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

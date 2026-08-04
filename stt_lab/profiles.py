@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -51,9 +50,6 @@ class RunnableProfile(BaseModel):
 
     def validate_consistency(self) -> None:
         validate_mode(self.mode, self.policy, self.stt.location)
-        if self.stt.location == "cloud" and not self.cloud.stt_base_url and self.stt.provider == "openai_compatible":
-            # provider-specific cloud configs may omit URL (use SDK defaults)
-            pass
         if self.polish.provider == "cloud_llm" and not self.policy.allow_cloud_transcript:
             raise ValueError("cloud polish requires policy.allow_cloud_transcript=true")
 
@@ -88,3 +84,37 @@ def list_profiles() -> list[RunnableProfile]:
         except Exception:
             continue
     return out
+
+
+def apply_stt_mode(
+    profile: RunnableProfile,
+    location: Literal["local", "cloud"],
+) -> RunnableProfile:
+    """Runtime local/cloud toggle for the dictation app (does not rewrite disk)."""
+    p = profile.model_copy(deep=True)
+    local_provider = (
+        p.meta.get("local_provider")
+        or (f"adapted-{p.stt.adapter_id}" if p.stt.adapter_id else None)
+        or (f"whisper-{p.stt.base_model}" if p.stt.base_model else None)
+        or "whisper-tiny"
+    )
+    cloud_provider = p.meta.get("cloud_provider") or "openai-whisper-1"
+
+    if location == "local":
+        p.stt.location = "local"
+        p.stt.provider = local_provider
+        p.mode = "fully_local"
+        p.policy.allow_cloud_audio = False
+        # Keep polish-off for fully local unless already local polish
+        if p.polish.provider == "cloud_llm":
+            p.polish.provider = "off"
+        p.policy.allow_cloud_transcript = False
+    else:
+        p.stt.location = "cloud"
+        p.stt.provider = cloud_provider
+        p.mode = "cloud_stt"
+        p.policy.allow_cloud_audio = True
+        p.policy.allow_cloud_transcript = True
+
+    p.validate_consistency()
+    return p

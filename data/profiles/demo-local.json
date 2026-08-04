@@ -1,0 +1,38 @@
+{
+  "id": "demo-local",
+  "name": "Demo local tiny",
+  "mode": "fully_local",
+  "stt": {
+    "provider": "whisper-tiny",
+    "base_model": "tiny",
+    "adapter_id": null,
+    "model": null,
+    "language": "en",
+    "location": "local"
+  },
+  "polish": {
+    "provider": "off",
+    "model": null
+  },
+  "cleanup": {
+    "filler_words": true,
+    "dictionary_path": null
+  },
+  "policy": {
+    "allow_cloud_audio": false,
+    "allow_cloud_transcript": false,
+    "store_audio_locally": true,
+    "store_transcript_locally": true,
+    "retention": "days:30"
+  },
+  "cloud": {
+    "stt_base_url": null,
+    "stt_api_key_env": "OPENAI_API_KEY",
+    "polish_base_url": null,
+    "polish_api_key_env": null
+  },
+  "meta": {
+    "local_provider": "whisper-tiny",
+    "cloud_provider": "openai-whisper-1"
+  }
+}

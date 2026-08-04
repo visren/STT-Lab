@@ -122,20 +122,20 @@ No hard dependency on a single commercial vendor for core STT.
 - [x] Multi-model compare with WER/CER/latency  
 - [x] Dataset CRUD for personal pairs  
 - [x] Local LoRA fine-tune + job status  
-- [ ] Cloud fine-tune backend (Modal / HF Jobs / RunPod)  
+- [x] Cloud fine-tune backend stub lifecycle (`CLOUD_FINETUNE_BACKEND=stub`; Modal/HF/RunPod reserved)  
 - [x] Evaluate adapted vs base  
 - [x] Export “runnable profile” (model + adapter + defaults) for the dictation app  
 
 ### Dictation app (MVP)
-- [ ] Global hotkey record/stop  
-- [ ] Local STT via chosen Whisper (+ adapter)  
-- [ ] Cloud STT via configurable OpenAI-compatible (or provider) endpoint  
-- [ ] Mode toggle: local / cloud / hybrid  
-- [ ] Insert transcript into focused field  
-- [ ] Basic filler-word cleanup (local rules)  
-- [ ] Custom dictionary / replacements  
-- [ ] On-device history with retention policy  
-- [ ] Privacy indicator (local vs leaving device)  
+- [x] Global hotkey record/stop  
+- [x] Local STT via chosen Whisper (+ adapter)  
+- [x] Cloud STT via configurable OpenAI-compatible (or provider) endpoint  
+- [x] Mode toggle: local / cloud  
+- [x] Insert transcript into focused field  
+- [x] Basic filler-word cleanup (local rules)  
+- [x] Custom dictionary / replacements  
+- [x] On-device history with retention policy  
+- [x] Privacy indicator (local vs leaving device)  
 
 ### Dictation app (later)
 - [ ] Optional LLM polish (local or cloud)  

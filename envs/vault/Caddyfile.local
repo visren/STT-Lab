@@ -1,0 +1,14 @@
+# Local / staging TLS with an internal CA (no public DNS needed).
+# Generate certs: ./envs/vault/scripts/gen-certs.sh
+
+https://{$VAULT_TLS_DOMAIN:vault.local} {
+	tls /certs/vault.crt /certs/vault.key
+	reverse_proxy dataset-vault:9000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+}

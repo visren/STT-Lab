@@ -20,7 +20,10 @@ data/datasets/*
 data/adapters/*
 data/runs/*
 data/profiles/*
+!data/profiles/.gitkeep
+!data/profiles/demo-*.json
 data/history/*
+data/vault-backups/*
 data/*.db
 data/local_keys.json
 !data/.gitkeep
@@ -28,13 +31,18 @@ data/local_keys.json
 !data/datasets/.gitkeep
 !data/adapters/.gitkeep
 !data/runs/.gitkeep
-!data/profiles/.gitkeep
 !data/history/.gitkeep
+!data/vault-backups/.gitkeep
 
-# Web
-apps/web/node_modules/
-apps/web/.next/
-apps/web/out/
+# Vault TLS material
+envs/vault/certs/*
+!envs/vault/certs/.gitignore
+
+# Future local apps (e.g. apps/dictation)
+apps/*/node_modules/
+apps/*/.next/
+apps/*/dist/
+apps/*/out/
 
 # IDE / OS / test
 .DS_Store
@@ -43,6 +51,9 @@ apps/web/out/
 *.swp
 .cursor/
 .pytest_cache/
+.ruff_cache/
+*.egg-info/
+.docker-cache/
 
 # Model caches
 .cache/

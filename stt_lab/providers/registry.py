@@ -29,6 +29,9 @@ def adapted_providers(db: Session) -> list[AdaptedWhisperProvider]:
     for job in jobs:
         if not job.adapter_path or not Path(job.adapter_path).exists():
             continue
+        # Stub cloud adapters are lifecycle markers, not loadable PEFT weights.
+        if (Path(job.adapter_path) / "STUB_ADAPTER.json").exists():
+            continue
         providers.append(
             AdaptedWhisperProvider(
                 adapter_id=job.id,
